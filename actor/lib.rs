@@ -7,6 +7,7 @@ pub use actor_core::Executor;
 
 pub type ReqPayload<E> = (<E as Executor>::Req, OneTx<<E as Executor>::Res>);
 
+#[derive(Clone, Debug)]
 pub struct ReqTx<E: Executor> {
     // access inner is generally safe
     pub inner: _ReqTx<ReqPayload<E>>,
