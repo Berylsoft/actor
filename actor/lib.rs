@@ -36,11 +36,10 @@ impl CloseHandle {
     }
 }
 
-pub fn spawn<E: Executor>(init: E::Init) -> (ReqTx<E>, CloseHandle) {
+pub fn spawn<E: Executor>(mut ctx: E) -> (ReqTx<E>, CloseHandle) {
     let (tx, mut wait) = one_channel();
     let (finish, rx) = one_channel();
     let (req_tx, mut req_rx) = _req_channel::<ReqPayload<E>>();
-    let mut ctx = E::init(init);
     tokio::spawn(async move {
         loop {
             tokio::select! {

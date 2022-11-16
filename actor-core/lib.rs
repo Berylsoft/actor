@@ -1,9 +1,9 @@
-pub trait Executor: 'static + Sized + Send {
-    type Init;
-    type Req: Send + std::fmt::Debug;
-    type Res: Send + std::fmt::Debug;
+use std::fmt::Debug;
 
-    fn init(init: Self::Init) -> Self;
+pub trait Executor: 'static + Sized + Send {
+    type Req: Send + Debug;
+    type Res: Send + Debug;
+
     fn exec(&mut self, req: Self::Req) -> Self::Res;
     fn close(self) {}
 }
