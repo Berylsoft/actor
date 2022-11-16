@@ -5,15 +5,17 @@ use tokio::sync::{
 
 pub use actor_core::Executor;
 
+pub type ReqPayload<E> = (<E as Executor>::Req, OneTx<<E as Executor>::Res>);
+
 #[derive(Clone, Debug)]
-pub struct ReqTx<Req, Res> {
+pub struct ReqTx<E: Executor> {
     // access inner is generally safe
-    pub inner: _ReqTx<(Req, OneTx<Res>)>,
+    pub inner: _ReqTx<ReqPayload<E>>,
 }
 
-impl<Req, Res> ReqTx<Req, Res> {
-    pub async fn request(&self, req: Req) -> Result<Res, Option<Req>> {
-        let (res_tx, res_rx) = one_channel::<Res>();
+impl<E: Executor> ReqTx<E> {
+    pub async fn request(&self, req: E::Req) -> Result<E::Res, Option<E::Req>> {
+        let (res_tx, res_rx) = one_channel::<E::Res>();
         self.inner.send((req, res_tx)).map_err(|payload| Some(payload.0.0))?;
         res_rx.await.map_err(|_| None)
     }
@@ -34,10 +36,10 @@ impl CloseHandle {
     }
 }
 
-pub fn spawn<E: Executor>(mut ctx: E) -> (ReqTx<E::Req, E::Res>, CloseHandle) {
+pub fn spawn<E: Executor>(mut ctx: E) -> (ReqTx<E>, CloseHandle) {
     let (tx, mut wait) = one_channel();
     let (finish, rx) = one_channel();
-    let (req_tx, mut req_rx) = _req_channel::<(E::Req, OneTx<E::Res>)>();
+    let (req_tx, mut req_rx) = _req_channel::<ReqPayload<E>>();
     tokio::spawn(async move {
         loop {
             tokio::select! {
