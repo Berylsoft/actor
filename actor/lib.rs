@@ -1,12 +1,28 @@
-pub use request_channel;
+use tokio::sync::{
+    oneshot::{channel as one_channel, Sender as OneTx, Receiver as OneRx},
+    mpsc::{unbounded_channel as _req_channel, UnboundedSender as _ReqTx},
+};
 
-use tokio::sync::oneshot;
-use request_channel::unbounded::{ReqTx, channel};
-use actor_core::Executor;
+pub use actor_core::Executor;
+
+pub type ReqPayload<E> = (<E as Executor>::Req, OneTx<<E as Executor>::Res>);
+
+pub struct ReqTx<E: Executor> {
+    // access inner is generally safe
+    pub inner: _ReqTx<ReqPayload<E>>,
+}
+
+impl<E: Executor> ReqTx<E> {
+    pub async fn request(&self, req: E::Req) -> Result<E::Res, Option<E::Req>> {
+        let (res_tx, res_rx) = one_channel::<E::Res>();
+        self.inner.send((req, res_tx)).map_err(|payload| Some(payload.0.0))?;
+        res_rx.await.map_err(|_| None)
+    }
+}
 
 pub struct CloseHandle {
-    tx: Option<oneshot::Sender<()>>,
-    rx: oneshot::Receiver<()>,
+    tx: Option<OneTx<()>>,
+    rx: OneRx<()>,
 }
 
 impl CloseHandle {
@@ -19,10 +35,10 @@ impl CloseHandle {
     }
 }
 
-pub fn spawn<E: Executor>(init: E::Init) -> (ReqTx<E::Req, E::Res>, CloseHandle) {
-    let (tx, mut wait) = oneshot::channel();
-    let (finish, rx) = oneshot::channel();
-    let (req_tx, mut req_rx) = channel::<E::Req, E::Res>();
+pub fn spawn<E: Executor>(init: E::Init) -> (ReqTx<E>, CloseHandle) {
+    let (tx, mut wait) = one_channel();
+    let (finish, rx) = one_channel();
+    let (req_tx, mut req_rx) = _req_channel::<ReqPayload<E>>();
     let mut ctx = E::init(init);
     tokio::spawn(async move {
         loop {
@@ -45,5 +61,5 @@ pub fn spawn<E: Executor>(init: E::Init) -> (ReqTx<E::Req, E::Res>, CloseHandle)
             }
         }    
     });
-    (req_tx, CloseHandle { tx: Some(tx), rx })
+    (ReqTx { inner: req_tx }, CloseHandle { tx: Some(tx), rx })
 }

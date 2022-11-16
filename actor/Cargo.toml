@@ -12,5 +12,4 @@ path = "lib.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
-request-channel = { git = "https://github.com/Berylsoft/request-channel", branch = "no-trait" }
 actor-core = { path = "../actor-core" }
