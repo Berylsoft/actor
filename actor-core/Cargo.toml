@@ -1,0 +1,13 @@
+[package]
+name = "actor-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/actor"
+
+[lib]
+name = "actor_core"
+path = "lib.rs"
+
+[dependencies]

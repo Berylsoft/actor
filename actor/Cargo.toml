@@ -1,0 +1,16 @@
+[package]
+name = "actor"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/actor"
+
+[lib]
+name = "actor"
+path = "lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+request-channel = { git = "https://github.com/Berylsoft/request-channel", branch = "no-trait" }
+actor-core = { path = "../actor-core" }
