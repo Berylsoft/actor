@@ -7,7 +7,6 @@ pub use actor_core::Executor;
 
 pub type ReqPayload<E> = (<E as Executor>::Req, OneTx<<E as Executor>::Res>);
 
-#[derive(Clone, Debug)]
 pub struct ReqTx<E: Executor> {
     // access inner is generally safe
     pub inner: _ReqTx<ReqPayload<E>>,
@@ -18,6 +17,12 @@ impl<E: Executor> ReqTx<E> {
         let (res_tx, res_rx) = one_channel::<E::Res>();
         self.inner.send((req, res_tx)).map_err(|payload| Some(payload.0.0))?;
         res_rx.await.map_err(|_| None)
+    }
+}
+
+impl<E: Executor> Clone for ReqTx<E> {
+    fn clone(&self) -> Self {
+        ReqTx { inner: self.inner.clone() }
     }
 }
 
