@@ -1,26 +1,25 @@
-use tokio::sync::{
-    oneshot::{channel as one_channel, Sender as OneTx, Receiver as OneRx},
-    mpsc::{unbounded_channel as _req_channel, UnboundedSender as _ReqTx},
-};
+pub(crate) use std::future::Future;
+pub(crate) use async_oneshot::{oneshot as one_channel, Sender as OneTx, Receiver as OneRx};
+pub(crate) use async_channel::{unbounded as _req_channel, Sender as _ReqTx};
 
-pub use actor_core::Executor;
+pub use actor_core::{Context, SyncContext, AsyncContext};
 
-pub type ReqPayload<E> = (<E as Executor>::Req, OneTx<<E as Executor>::Res>);
+pub type ReqPayload<C> = (<C as Context>::Req, OneTx<<C as Context>::Res>);
 
-pub struct ReqTx<E: Executor> {
+pub struct ReqTx<C: Context> {
     // access inner is generally safe
-    pub inner: _ReqTx<ReqPayload<E>>,
+    pub inner: _ReqTx<ReqPayload<C>>,
 }
 
-impl<E: Executor> ReqTx<E> {
-    pub async fn request(&self, req: E::Req) -> Result<E::Res, Option<E::Req>> {
-        let (res_tx, res_rx) = one_channel::<E::Res>();
-        self.inner.send((req, res_tx)).map_err(|payload| Some(payload.0.0))?;
+impl<C: Context> ReqTx<C> {
+    pub async fn request(&self, req: C::Req) -> Result<C::Res, Option<C::Req>> {
+        let (res_tx, res_rx) = one_channel::<C::Res>();
+        self.inner.send((req, res_tx)).await.map_err(|payload| Some(payload.0.0))?;
         res_rx.await.map_err(|_| None)
     }
 }
 
-impl<E: Executor> Clone for ReqTx<E> {
+impl<C: Context> Clone for ReqTx<C> {
     fn clone(&self) -> Self {
         ReqTx { inner: self.inner.clone() }
     }
@@ -41,30 +40,7 @@ impl CloseHandle {
     }
 }
 
-pub fn spawn<E: Executor>(mut ctx: E) -> (ReqTx<E>, CloseHandle) {
-    let (tx, mut wait) = one_channel();
-    let (finish, rx) = one_channel();
-    let (req_tx, mut req_rx) = _req_channel::<ReqPayload<E>>();
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                biased;
-                Ok(()) = &mut wait => {
-                    ctx.close();
-                    finish.send(()).unwrap();
-                    break;
-                }
-                maybe_req = req_rx.recv() => {
-                    if let Some((req, res_tx)) = maybe_req {
-                        res_tx.send(ctx.exec(req)).unwrap();
-                    } else {
-                        ctx.close();
-                        finish.send(()).unwrap();
-                        break;
-                    }
-                }
-            }
-        }    
-    });
-    (ReqTx { inner: req_tx }, CloseHandle { tx: Some(tx), rx })
-}
+mod sync;
+pub use sync::spawn_sync;
+mod r#async;
+pub use r#async::spawn_async;

@@ -11,5 +11,7 @@ name = "actor"
 path = "lib.rs"
 
 [dependencies]
-tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+futures-util = { version = "0.3", default-features = false, features = ["async-await-macro"] }
+async-oneshot = "0.5"
+async-channel = "1.7"
 actor-core = { path = "../actor-core" }
