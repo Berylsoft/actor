@@ -1,8 +1,8 @@
-use std::{fmt::Debug, future::Future};
+use std::future::Future;
 
 pub trait Context {
-    type Req: Send + Debug;
-    type Res: Send + Debug;
+    type Req: Send;
+    type Res: Send;
 }
 
 pub trait SyncContext: 'static + Sized + Send + Context {

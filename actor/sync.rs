@@ -13,18 +13,22 @@ pub fn spawn_sync<C: SyncContext>(mut ctx: C) -> (impl Future<Output = ()>, ReqT
                 close = &mut close_fut => {
                     if let Ok(()) = close {
                         ctx.close();
-                        wait_tx.send(()).unwrap();
+                        wait_tx.send(()).expect("FATAL: close_tx not dropped but wait_rx dropped");
                         break;
                     } else {
-                        unreachable!();
+                        panic!("close handle dropped before called close()");
                     }
                 }
                 maybe_req = &mut recv_fut => {
                     if let Ok((req, mut res_tx)) = maybe_req {
-                        res_tx.send(ctx.exec(req)).unwrap();
+                        if let Err(_) = res_tx.send(ctx.exec(req)) {
+                            ctx.close(); // Close and rollback the last request?
+                            wait_tx.send(()).expect("FATAL: wait_rx dropped when (all req_tx dropped when sending response)");
+                            panic!("FATAL: all req_tx dropped when sending response");
+                        }
                     } else {
                         ctx.close();
-                        wait_tx.send(()).unwrap();
+                        wait_tx.send(()).expect("FATAL: wait_rx dropped when all req_tx dropped");
                         break;
                     }
                 }

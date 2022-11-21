@@ -31,13 +31,28 @@ pub struct CloseHandle {
 }
 
 impl CloseHandle {
-    pub async fn close(self) -> Option<()> {
+    pub async fn close(self) {
         let CloseHandle { mut close_tx, wait_rx } = self;
         if let Ok(()) = close_tx.send(()) {
-            wait_rx.await.ok()
-        } else {
-            // close_rx dropped i.e. ctx already closed
-            Some(())
+            wait_rx.await.expect("FATAL: close_rx not dropped but wait_tx dropped")
+        }
+        // else: close_rx dropped i.e. ctx already closed
+    }
+}
+
+pub struct CloseHandler {
+    handles: Vec<CloseHandle>,
+}
+
+impl CloseHandler {
+    pub fn reg(&mut self, handle: CloseHandle) {
+        self.handles.push(handle)
+    }
+
+    pub async fn close(self) {
+        // TODO join multi futures in vec
+        for handle in self.handles {
+            handle.close().await
         }
     }
 }
