@@ -50,10 +50,7 @@ impl CloseHandler {
     }
 
     pub async fn close(self) {
-        // TODO join multi futures in vec
-        for handle in self.handles {
-            handle.close().await
-        }
+        let _ = futures_util::future::join_all(self.handles.into_iter().map(|handle| handle.close())).await;
     }
 }
 
