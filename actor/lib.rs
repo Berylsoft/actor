@@ -26,17 +26,19 @@ impl<C: Context> Clone for ReqTx<C> {
 }
 
 pub struct CloseHandle {
-    tx: Option<OneTx<()>>,
-    rx: OneRx<()>,
+    close_tx: OneTx<()>,
+    wait_rx: OneRx<()>,
 }
 
 impl CloseHandle {
-    pub fn close(&mut self) -> Option<()> {
-        self.tx.take().unwrap().send(()).ok()
-    }
-
-    pub async fn wait(self) -> Option<()> {
-        self.rx.await.ok()
+    pub async fn close(self) -> Option<()> {
+        let CloseHandle { mut close_tx, wait_rx } = self;
+        if let Ok(()) = close_tx.send(()) {
+            wait_rx.await.ok()
+        } else {
+            // close_rx dropped i.e. ctx already closed
+            Some(())
+        }
     }
 }
 
