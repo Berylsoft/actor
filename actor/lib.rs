@@ -1,6 +1,6 @@
 pub(crate) use std::future::Future;
 pub(crate) use async_oneshot::{oneshot as one_channel, Sender as OneTx, Receiver as OneRx};
-pub(crate) use async_channel::{unbounded as _req_channel, Sender as _ReqTx};
+pub(crate) use async_channel::{unbounded as _req_channel, Sender as _ReqTx, Receiver as _ReqRx};
 
 pub use actor_core::{Context, SyncContext, AsyncContext};
 
@@ -25,32 +25,54 @@ impl<C: Context> Clone for ReqTx<C> {
     }
 }
 
-pub struct CloseHandle {
-    close_tx: OneTx<()>,
-    wait_rx: OneRx<()>,
+pub struct CloseFinisher {
+    tx2: _ReqTx<()>,
 }
 
-impl CloseHandle {
-    pub async fn close(self) {
-        let CloseHandle { mut close_tx, wait_rx } = self;
-        if let Ok(()) = close_tx.send(()) {
-            wait_rx.await.expect("FATAL: close_rx not dropped but wait_tx dropped")
-        }
-        // else: close_rx dropped i.e. ctx already closed
-    }
+pub struct CloseHandle {
+    rx: _ReqRx<CloseFinisher>,
 }
 
 pub struct CloseHandler {
-    handles: Vec<CloseHandle>,
+    tx: _ReqTx<CloseFinisher>,
+    rx: _ReqRx<CloseFinisher>,
+}
+
+impl CloseFinisher {
+    // finish close after received close signal
+    pub fn finish(self) {}
+}
+
+impl CloseHandle {
+    // wait for close signal
+    pub async fn wait(&self) -> CloseFinisher {
+        self.rx.recv().await.expect("FATAL: close handler dropped before actor")
+    }
+
+    // finish close in advance
+    pub fn finish(self) {}
 }
 
 impl CloseHandler {
-    pub fn reg(&mut self, handle: CloseHandle) {
-        self.handles.push(handle)
+    pub fn new() -> CloseHandler {
+        let (tx, rx) = _req_channel();
+        CloseHandler { tx, rx }
+    }
+
+    pub fn spawn(&self) -> CloseHandle {
+        CloseHandle { rx: self.rx.clone() }
     }
 
     pub async fn close(self) {
-        let _ = futures_util::future::join_all(self.handles.into_iter().map(|handle| handle.close())).await;
+        let CloseHandler { tx, rx: _ } = self;
+        let (tx2, rx2) = _req_channel();
+        // send close signal to all actors that are not closed in advance
+        if let Err(_) = tx.send(CloseFinisher { tx2 }).await {
+            // if all actors are closed in advance, return directly
+            return;
+        }
+        // wait all actors that are finished close after received close signal
+        let _ = rx2.recv().await.unwrap_err();
     }
 }
 
