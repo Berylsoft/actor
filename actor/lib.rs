@@ -25,32 +25,12 @@ impl<C: Context> Clone for ReqTx<C> {
     }
 }
 
-pub struct CloseFinisher {
-    tx2: _ReqTx<()>,
-}
-
-pub struct CloseHandle {
-    rx: _ReqRx<CloseFinisher>,
-}
+type CloseFinisher = _ReqTx<()>;
+type CloseHandle = _ReqRx<CloseFinisher>;
 
 pub struct CloseHandler {
     tx: _ReqTx<CloseFinisher>,
     rx: _ReqRx<CloseFinisher>,
-}
-
-impl CloseFinisher {
-    // finish close after received close signal
-    pub fn finish(self) {}
-}
-
-impl CloseHandle {
-    // wait for close signal
-    pub async fn wait(&self) -> CloseFinisher {
-        self.rx.recv().await.expect("FATAL: close handler dropped before actor")
-    }
-
-    // finish close in advance
-    pub fn finish(self) {}
 }
 
 impl CloseHandler {
@@ -60,14 +40,14 @@ impl CloseHandler {
     }
 
     pub fn spawn(&self) -> CloseHandle {
-        CloseHandle { rx: self.rx.clone() }
+        self.rx.clone()
     }
 
     pub async fn close(self) {
         let CloseHandler { tx, rx: _ } = self;
         let (tx2, rx2) = _req_channel();
         // send close signal to all actors that are not closed in advance
-        if let Err(_) = tx.send(CloseFinisher { tx2 }).await {
+        if let Err(_) = tx.send(tx2).await {
             // if all actors are closed in advance, return directly
             return;
         }

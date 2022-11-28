@@ -1,39 +1,36 @@
 use crate::*;
 
-pub fn spawn_sync<C: SyncContext>(mut ctx: C) -> (impl Future<Output = ()>, ReqTx<C>, CloseHandle) {
-    let (close_tx, close_rx) = one_channel();
-    let (mut wait_tx, wait_rx) = one_channel();
+pub fn spawn_sync<C: SyncContext>(mut ctx: C, close_handler: &CloseHandler) -> (impl Future<Output = ()>, ReqTx<C>) {
+    let close_handle = close_handler.spawn();
     let (req_tx, req_rx) = _req_channel::<ReqPayload<C>>();
     let fut = async move {
         use futures_util::FutureExt;
-        let mut close_fut = close_rx.fuse();
+        let mut close_fut = close_handle.recv().fuse();
         let mut recv_fut = req_rx.recv().fuse();
         loop {
             futures_util::select_biased! {
-                close = &mut close_fut => {
-                    if let Ok(()) = close {
+                maybe_close_finisher = &mut close_fut => {
+                    if let Ok(close_finisher) = maybe_close_finisher {
                         ctx.close();
-                        wait_tx.send(()).expect("FATAL: close_tx not dropped but wait_rx dropped");
                         break;
+                        // drop close handle & close finisher (finish close after received close signal)
                     } else {
-                        panic!("close handle dropped before called close()");
+                        panic!("FATAL: close handler dropped before actor");
                     }
                 }
                 maybe_req = &mut recv_fut => {
                     if let Ok((req, mut res_tx)) = maybe_req {
-                        if let Err(_) = res_tx.send(ctx.exec(req)) {
-                            ctx.close(); // Close and rollback the last request?
-                            wait_tx.send(()).expect("FATAL: wait_rx dropped when (all req_tx dropped when sending response)");
-                            panic!("FATAL: all req_tx dropped when sending response");
-                        }
+                        // unreachable: the request sender should keep in the `ReqTx::request()` function context
+                        // until received response, so res_rx will not be dropped
+                        res_tx.send(ctx.exec(req)).expect("FATAL: unreachable: res_rx dropped when sending response")
                     } else {
                         ctx.close();
-                        wait_tx.send(()).expect("FATAL: wait_rx dropped when all req_tx dropped");
                         break;
+                        // drop close handle (finish close in advance)
                     }
                 }
             }
         }
     };
-    (fut, ReqTx { inner: req_tx }, CloseHandle { close_tx, wait_rx })
+    (fut, ReqTx { inner: req_tx })
 }
