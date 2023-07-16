@@ -33,7 +33,8 @@ pub struct Handle<C: Context> {
 
 pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
     let (req_tx, mut req_rx) = req_channel();
-    let mut ctx = unblock(move || C::init(init)).await.unwrap()?;
+    let mut ctx = unblock(move || C::init(init)).await
+        .expect("FATAL: tokio runtime error or panic occurred when context init")?;
     unblock(move || {
         if let Some(Message { req, res_tx }) = req_rx.blocking_recv() {
             res_tx.send(match req {
