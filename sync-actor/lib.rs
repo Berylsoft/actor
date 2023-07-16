@@ -1,5 +1,5 @@
 use oneshot::{channel as one_channel, Sender as OneTx};
-use std::sync::mpsc::{channel as req_channel, Sender as ReqTx};
+use std::sync::mpsc::{channel as req_channel, Sender as ReqTx, Receiver as ReqRx};
 #[inline(always)]
 fn unblock<F, R>(func: F) -> std::thread::JoinHandle<R>
 where
@@ -36,14 +36,8 @@ impl<C: Context> Clone for Handle<C> {
     }
 }
 
-pub fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
-    let (req_tx, req_rx) = req_channel();
-    // straightforward equivalent:
-    // let mut ctx = unblock(move || C::init(init)).join()
-    //     .expect("FATAL: native thread error or panic occurred when context init")?;
-    // but it is actually no need to unblock.
-    let mut ctx = C::init(init)?;
-    unblock(move || {
+fn actor<C: Context>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
+    move || {
         if let Ok(Message { req, res_tx }) = req_rx.recv() {
             res_tx.send(match req {
                 Request::Req(req) => match ctx.exec(req) {
@@ -60,8 +54,27 @@ pub fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
             // passive closing (all request sender dropped)
             ctx.close().expect("FATAL: Error occurred during closing");
         }
-    })/* drop is detach */;
-    Ok(Handle { req_tx })
+    }
+}
+
+pub fn spawn<C: Context>(ctx: C) -> Handle<C> {
+    let (req_tx, req_rx) = req_channel();
+    unblock(actor(ctx, req_rx))/* drop is detach */;
+    Handle { req_tx }
+}
+
+pub fn spawn_async<C: AsyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    // straightforward equivalent:
+    // let mut ctx = unblock(move || C::init(init)).join()
+    //     .expect("FATAL: native thread error or panic occurred when context init")?;
+    // but it is actually no need to unblock.
+    let ctx = C::init(init)?;
+    Ok(spawn(ctx))
+}
+
+pub fn spawn_sync<C: SyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    let ctx = C::init(init)?;
+    Ok(spawn(ctx))
 }
 
 impl<C: Context> Handle<C> {

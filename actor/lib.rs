@@ -1,5 +1,5 @@
 use async_oneshot::{oneshot as one_channel, Sender as OneTx};
-use async_channel::{unbounded as req_channel, Sender as ReqTx};
+use async_channel::{unbounded as req_channel, Sender as ReqTx, Receiver as ReqRx};
 use blocking::unblock;
 use actor_core::*;
 
@@ -29,10 +29,8 @@ impl<C: Context> Clone for Handle<C> {
     }
 }
 
-pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
-    let (req_tx, req_rx) = req_channel();
-    let mut ctx = unblock(move || C::init(init)).await?;
-    unblock(move || {
+fn actor<C: Context>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
+    move || {
         if let Ok(Message { req, mut res_tx }) = req_rx.recv_blocking() {
             res_tx.send(match req {
                 Request::Req(req) => match ctx.exec(req) {
@@ -49,8 +47,23 @@ pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
             // passive closing (all request sender dropped)
             ctx.close().expect("FATAL: Error occurred during closing");
         }
-    }).detach();
-    Ok(Handle { req_tx })
+    }
+}
+
+pub fn spawn<C: Context>(ctx: C) -> Handle<C> {
+    let (req_tx, req_rx) = req_channel();
+    unblock(actor(ctx, req_rx)).detach();
+    Handle { req_tx }
+}
+
+pub async fn spawn_async<C: AsyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    let ctx = unblock(move || C::init(init)).await?;
+    Ok(spawn(ctx))
+}
+
+pub fn spawn_sync<C: SyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    let ctx = C::init(init)?;
+    Ok(spawn(ctx))
 }
 
 impl<C: Context> Handle<C> {

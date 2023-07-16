@@ -1,5 +1,5 @@
 use tokio::sync::oneshot::{channel as one_channel, Sender as OneTx};
-use tokio::sync::mpsc::{unbounded_channel as req_channel, UnboundedSender as ReqTx};
+use tokio::sync::mpsc::{unbounded_channel as req_channel, UnboundedSender as ReqTx, UnboundedReceiver as ReqRx};
 #[inline(always)]
 fn unblock<F, R>(func: F) -> tokio::task::JoinHandle<R>
 where
@@ -36,11 +36,8 @@ impl<C: Context> Clone for Handle<C> {
     }
 }
 
-pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
-    let (req_tx, mut req_rx) = req_channel();
-    let mut ctx = unblock(move || C::init(init)).await
-        .expect("FATAL: tokio runtime error or panic occurred when context init")?;
-    unblock(move || {
+fn actor<C: Context>(mut ctx: C, mut req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
+    move || {
         if let Some(Message { req, res_tx }) = req_rx.blocking_recv() {
             res_tx.send(match req {
                 Request::Req(req) => match ctx.exec(req) {
@@ -57,8 +54,24 @@ pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
             // passive closing (all request sender dropped)
             ctx.close().expect("FATAL: Error occurred during closing");
         }
-    })/* drop is detach */;
-    Ok(Handle { req_tx })
+    }
+}
+
+pub fn spawn<C: Context>(ctx: C) -> Handle<C> {
+    let (req_tx, req_rx) = req_channel();
+    unblock(actor(ctx, req_rx))/* drop is detach */;
+    Handle { req_tx }
+}
+
+pub async fn spawn_async<C: AsyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    let ctx = unblock(move || C::init(init)).await
+        .expect("FATAL: tokio runtime error or panic occurred when context init")?;
+    Ok(spawn(ctx))
+}
+
+pub fn spawn_sync<C: SyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+    let ctx = C::init(init)?;
+    Ok(spawn(ctx))
 }
 
 impl<C: Context> Handle<C> {
