@@ -1,0 +1,17 @@
+[package]
+name = "actor"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/actor"
+
+[lib]
+name = "actor"
+path = "lib.rs"
+
+[dependencies]
+actor-core = { path = "../core" }
+async-channel = "1"
+async-oneshot = "0.5"
+blocking = "1"

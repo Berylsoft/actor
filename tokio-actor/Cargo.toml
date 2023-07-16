@@ -1,0 +1,15 @@
+[package]
+name = "tokio-actor"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/actor"
+
+[lib]
+name = "tokio_actor"
+path = "lib.rs"
+
+[dependencies]
+actor-core = { path = "../core" }
+tokio = { version = "1", default-features = false, features = ["rt", "sync"] }
