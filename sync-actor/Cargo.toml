@@ -1,0 +1,15 @@
+[package]
+name = "sync-actor"
+version = "0.1.0"
+edition = "2021"
+authors = ["stackinspector"]
+license = "MPL-2.0"
+repository = "https://github.com/Berylsoft/actor"
+
+[lib]
+name = "sync_actor"
+path = "lib.rs"
+
+[dependencies]
+actor-core = { path = "../core" }
+oneshot = "0.1"
