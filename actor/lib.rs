@@ -19,9 +19,14 @@ struct Message<C: Context> {
     res_tx: OneTx<Response<C>>,
 }
 
-#[derive(Clone)]
 pub struct Handle<C: Context> {
     req_tx: ReqTx<Message<C>>,
+}
+
+impl<C: Context> Clone for Handle<C> {
+    fn clone(&self) -> Self {
+        Self { req_tx: self.req_tx.clone() }
+    }
 }
 
 pub async fn spawn<C: Context>(init: C::Init) -> Result<Handle<C>, C::Err> {
