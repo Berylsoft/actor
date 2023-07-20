@@ -38,21 +38,29 @@ impl<C: Context> Clone for Handle<C> {
 
 fn actor<C: Context>(mut ctx: C, mut req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
     move || {
-        if let Some(Message { req, res_tx }) = req_rx.blocking_recv() {
-            res_tx.send(match req {
-                Request::Req(req) => match ctx.exec(req) {
-                    Ok(res) => Response::Res(res),
-                    Err(err) => Response::Err(err),
+        loop {
+            if let Some(Message { req, res_tx }) = req_rx.blocking_recv() {
+                match req {
+                    Request::Req(req) => {
+                        res_tx.send(match ctx.exec(req) {
+                            Ok(res) => Response::Res(res),
+                            Err(err) => Response::Err(err),
+                        }).ok().expect("FATAL: res_rx dropped before send res");
+                    },
+                    // active closing
+                    Request::Close => {
+                        res_tx.send(match ctx.close() {
+                            Ok(()) => Response::Closed,
+                            Err(err) => Response::Err(err),
+                        }).ok().expect("FATAL: res_rx dropped before send res");
+                        break;
+                    } 
                 }
-                // active closing
-                Request::Close => match ctx.close() {
-                    Ok(()) => Response::Closed,
-                    Err(err) => Response::Err(err),
-                }
-            }).ok().expect("FATAL: res_rx dropped before send res");
-        } else {
-            // passive closing (all request sender dropped)
-            ctx.close().expect("FATAL: Error occurred during closing");
+            } else {
+                // passive closing (all request sender dropped)
+                ctx.close().expect("FATAL: Error occurred during closing");
+                break;
+            }
         }
     }
 }
