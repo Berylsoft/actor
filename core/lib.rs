@@ -20,3 +20,17 @@ pub trait SyncInitContext: Context {
 }
 
 pub struct ClosedError;
+
+impl std::fmt::Debug for ClosedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClosedError")
+    }
+}
+
+impl std::fmt::Display for ClosedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClosedError")
+    }
+}
+
+impl std::error::Error for ClosedError {}
