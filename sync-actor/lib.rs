@@ -36,7 +36,7 @@ impl<C: Context> Clone for Handle<C> {
     }
 }
 
-fn actor<C: Context>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
+fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
     move || {
         loop {
             if let Ok(Message { req, res_tx }) = req_rx.recv() {
@@ -65,24 +65,24 @@ fn actor<C: Context>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
     }
 }
 
-pub fn spawn<C: Context>(ctx: C) -> Handle<C> {
+pub fn spawn_sync<C: SyncContext>(ctx: C) -> Handle<C> {
     let (req_tx, req_rx) = req_channel();
-    unblock(actor(ctx, req_rx))/* drop is detach */;
+    unblock(sync_actor(ctx, req_rx))/* drop is detach */;
     Handle { req_tx }
 }
 
-pub fn spawn_async<C: AsyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+pub fn create_sync_sync<C: SyncInitContext + SyncContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
     // straightforward equivalent:
     // let mut ctx = unblock(move || C::init(init)).join()
     //     .expect("FATAL: native thread error or panic occurred when context init")?;
     // but it is actually no need to unblock.
     let ctx = C::init(init)?;
-    Ok(spawn(ctx))
+    Ok(spawn_sync(ctx))
 }
 
-pub fn spawn_sync<C: SyncInitContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
+pub fn create_simple_sync<C: SimpleInitContext + SyncContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
     let ctx = C::init(init)?;
-    Ok(spawn(ctx))
+    Ok(spawn_sync(ctx))
 }
 
 impl<C: Context> Handle<C> {

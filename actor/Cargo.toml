@@ -12,6 +12,12 @@ path = "lib.rs"
 
 [dependencies]
 actor-core = { path = "../core" }
+async-global-executor = { version = "2", optional = true }
 async-channel = "2"
 async-oneshot = "0.5"
-blocking = "1"
+# async-oneshot = "0.6" # reduce deps
+blocking = { version = "1", optional = true }
+
+[features]
+sync = ["blocking"]
+async = ["async-global-executor"]
