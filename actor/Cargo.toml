@@ -12,6 +12,6 @@ path = "lib.rs"
 
 [dependencies]
 actor-core = { path = "../core" }
-async-channel = "1"
+async-channel = "2"
 async-oneshot = "0.5"
 blocking = "1"
