@@ -133,7 +133,7 @@ pub async fn create_async_async<C: AsyncInitContext + AsyncContext>(init: C::Ini
     Ok(spawn_async(ctx))
 }
 
-#[cfg(feature = "async")]
+#[cfg(all(feature = "sync", feature = "async"))]
 pub async fn create_sync_async<C: SyncInitContext + AsyncContext>(init: C::Init) -> Result<Handle<C>, C::Err> {
     let ctx = unblock(move || C::init(init)).await?;
     Ok(spawn_async(ctx))
