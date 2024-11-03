@@ -1,7 +1,7 @@
 #[cfg(not(any(feature = "sync", feature = "async")))]
 compile_error!("choose sync or async or both");
 
-use async_oneshot::{oneshot as one_channel, Sender as OneTx};
+use oneshot::{channel as one_channel, Sender as OneTx};
 use async_channel::{unbounded as req_channel, Sender as ReqTx, Receiver as ReqRx};
 #[cfg(feature = "sync")]
 use blocking::unblock;
@@ -39,7 +39,7 @@ impl<C: Context> Clone for Handle<C> {
 fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
     move || {
         loop {
-            if let Ok(Message { req, mut res_tx }) = req_rx.recv_blocking() {
+            if let Ok(Message { req, res_tx }) = req_rx.recv_blocking() {
                 match req {
                     Request::Req(req) => {
                         res_tx.send(match ctx.exec(req) {
@@ -69,7 +69,7 @@ fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnO
 fn async_actor<C: AsyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl core::future::Future<Output = ()> {
     async move {
         loop {
-            if let Ok(Message { req, mut res_tx }) = req_rx.recv().await {
+            if let Ok(Message { req, res_tx }) = req_rx.recv().await {
                 match req {
                     Request::Req(req) => {
                         res_tx.send(match ctx.exec(req).await {
