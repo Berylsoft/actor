@@ -1,8 +1,9 @@
 #[cfg(not(any(feature = "sync", feature = "async")))]
 compile_error!("choose sync or async or both");
 
-use oneshot::{channel as one_channel, Sender as OneTx};
-use async_channel::{unbounded as req_channel, Sender as ReqTx, Receiver as ReqRx};
+use async_channel::{unbounded as req_channel, Sender as Tx, Receiver as Rx};
+#[inline(always)]
+pub fn one_channel<T>() -> (Tx<T>, Rx<T>) { async_channel::bounded(1) }
 #[cfg(feature = "sync")]
 use blocking::unblock;
 #[cfg(feature = "async")]
@@ -22,11 +23,11 @@ enum Response<C: Context> {
 
 struct Message<C: Context> {
     req: Request<C>,
-    res_tx: OneTx<Response<C>>,
+    res_tx: Tx<Response<C>>,
 }
 
 pub struct Handle<C: Context> {
-    req_tx: ReqTx<Message<C>>,
+    req_tx: Tx<Message<C>>,
 }
 
 impl<C: Context> Clone for Handle<C> {
@@ -36,20 +37,20 @@ impl<C: Context> Clone for Handle<C> {
 }
 
 #[cfg(feature = "sync")]
-fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnOnce() {
+fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: Rx<Message<C>>) -> impl FnOnce() {
     move || {
         loop {
             if let Ok(Message { req, res_tx }) = req_rx.recv_blocking() {
                 match req {
                     Request::Req(req) => {
-                        res_tx.send(match ctx.exec(req) {
+                        res_tx.send_blocking(match ctx.exec(req) {
                             Ok(res) => Response::Res(res),
                             Err(err) => Response::Err(err),
                         }).expect("FATAL: res_rx dropped before send res");
                     },
                     // active closing
                     Request::Close => {
-                        res_tx.send(match ctx.close() {
+                        res_tx.send_blocking(match ctx.close() {
                             Ok(()) => Response::Closed,
                             Err(err) => Response::Err(err),
                         }).expect("FATAL: res_rx dropped before send res");
@@ -66,7 +67,7 @@ fn sync_actor<C: SyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl FnO
 }
 
 #[cfg(feature = "async")]
-fn async_actor<C: AsyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl core::future::Future<Output = ()> {
+fn async_actor<C: AsyncContext>(mut ctx: C, req_rx: Rx<Message<C>>) -> impl core::future::Future<Output = ()> {
     async move {
         loop {
             if let Ok(Message { req, res_tx }) = req_rx.recv().await {
@@ -75,14 +76,14 @@ fn async_actor<C: AsyncContext>(mut ctx: C, req_rx: ReqRx<Message<C>>) -> impl c
                         res_tx.send(match ctx.exec(req).await {
                             Ok(res) => Response::Res(res),
                             Err(err) => Response::Err(err),
-                        }).expect("FATAL: res_rx dropped before send res");
+                        }).await.expect("FATAL: res_rx dropped before send res");
                     },
                     // active closing
                     Request::Close => {
                         res_tx.send(match ctx.close().await {
                             Ok(()) => Response::Closed,
                             Err(err) => Response::Err(err),
-                        }).expect("FATAL: res_rx dropped before send res");
+                        }).await.expect("FATAL: res_rx dropped before send res");
                         break;
                     } 
                 }
@@ -150,7 +151,7 @@ impl<C: Context> Handle<C> {
     async fn request_raw(&self, req: Request<C>) -> Response<C> {
         let (res_tx, res_rx) = one_channel();
         match self.req_tx.send(Message { req, res_tx }).await {
-            Ok(()) => res_rx.await.expect("FATAL: res_tx dropped before recv res"),
+            Ok(()) => res_rx.recv().await.expect("FATAL: res_tx dropped before recv res"),
             Err(_) => Response::Closed,
         }
     }
