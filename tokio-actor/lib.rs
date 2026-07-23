@@ -66,31 +66,29 @@ fn sync_actor<C: SyncContext>(mut ctx: C, mut req_rx: ReqRx<Message<C>>) -> impl
     }
 }
 
-fn async_actor<C: AsyncContext>(mut ctx: C, mut req_rx: ReqRx<Message<C>>) -> impl core::future::Future<Output = ()> {
-    async move {
-        loop {
-            if let Some(Message { req, res_tx }) = req_rx.recv().await {
-                match req {
-                    Request::Req(req) => {
-                        res_tx.send(match ctx.exec(req).await {
-                            Ok(res) => Response::Res(res),
-                            Err(err) => Response::Err(err),
-                        }).ok().expect("FATAL: res_rx dropped before send res");
-                    },
-                    // active closing
-                    Request::Close => {
-                        res_tx.send(match ctx.close().await {
-                            Ok(()) => Response::Closed,
-                            Err(err) => Response::Err(err),
-                        }).ok().expect("FATAL: res_rx dropped before send res");
-                        break;
-                    } 
-                }
-            } else {
-                // passive closing (all request sender dropped)
-                ctx.close().await.expect("FATAL: Error occurred during closing");
-                break;
+async fn async_actor<C: AsyncContext>(mut ctx: C, mut req_rx: ReqRx<Message<C>>) {
+    loop {
+        if let Some(Message { req, res_tx }) = req_rx.recv().await {
+            match req {
+                Request::Req(req) => {
+                    res_tx.send(match ctx.exec(req).await {
+                        Ok(res) => Response::Res(res),
+                        Err(err) => Response::Err(err),
+                    }).ok().expect("FATAL: res_rx dropped before send res");
+                },
+                // active closing
+                Request::Close => {
+                    res_tx.send(match ctx.close().await {
+                        Ok(()) => Response::Closed,
+                        Err(err) => Response::Err(err),
+                    }).ok().expect("FATAL: res_rx dropped before send res");
+                    break;
+                } 
             }
+        } else {
+            // passive closing (all request sender dropped)
+            ctx.close().await.expect("FATAL: Error occurred during closing");
+            break;
         }
     }
 }
